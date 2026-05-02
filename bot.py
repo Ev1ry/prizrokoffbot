@@ -29,7 +29,6 @@ DEFAULT_DATA = {
     "blocked_links": ["http://", "https://", "t.me/", "telegram.me/", "discord.gg/", "bit.ly/", "tinyurl.com", "vk.com/"],
     "custom_replies": {
         "привет": "Йоу 👻",
-        "ку": "Ку, легенда.",
         "правила": "Напиши /rules — там полный устав Prizrok чата.",
         "данек": "Данек кодерочек на связи 🧠💻"
     },
@@ -67,6 +66,11 @@ def save_data(obj):
         json.dump(obj, f, ensure_ascii=False, indent=2)
 
 data = load_data()
+# remove annoying old auto-reply if it exists in saved data.json
+if "ку" in data.get("custom_replies", {}):
+    data["custom_replies"].pop("ку", None)
+    save_data(data)
+
 captcha_pending = {}
 
 MEMES = [
@@ -152,6 +156,7 @@ HELP_TEXT = """
 
 <b>Полное управление ботом:</b>
 /botpanel — главная панель
+/buttons — кнопки mute/ban/warn ответом или /buttons ID
 /settings — настройки
 /set max_warnings 3
 /set mute_minutes 30
@@ -177,6 +182,7 @@ HELP_TEXT = """
 /notes
 /stats
 /status
+/buttons [id] — кнопки управления юзером
 
 <b>Важно:</b>
 Флуда по обычным сообщениям больше нет.
@@ -716,6 +722,72 @@ def notes_cmd(message):
 def stats_cmd(message):
     if not admin_only(message): return
     bot.reply_to(message, get_stats_text())
+
+
+@bot.message_handler(commands=["buttons", "modbuttons"])
+def buttons_cmd(message):
+    if not admin_only(message):
+        return
+    uid, name = get_target_user_id(message)
+    if not uid:
+        bot.reply_to(message, "Использование: ответь /buttons на сообщение пользователя ИЛИ /buttons USER_ID")
+        return
+
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("⚠️ Warn", callback_data=f"mod:warn:{uid}"),
+        types.InlineKeyboardButton("🔇 Mute", callback_data=f"mod:mute:{uid}"),
+        types.InlineKeyboardButton("🔊 Unmute", callback_data=f"mod:unmute:{uid}"),
+        types.InlineKeyboardButton("⛔ Ban", callback_data=f"mod:ban:{uid}"),
+        types.InlineKeyboardButton("👢 Kick", callback_data=f"mod:kick:{uid}"),
+        types.InlineKeyboardButton("🧹 Clear warns", callback_data=f"mod:clear:{uid}")
+    )
+    bot.reply_to(message, f"🛠 <b>Панель управления:</b> {name}\nID: <code>{uid}</code>", reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("mod:"))
+def mod_callback(call):
+    if not is_admin(call.message.chat.id, call.from_user.id):
+        bot.answer_callback_query(call.id, "Ты не админ.", show_alert=True)
+        return
+
+    try:
+        _, action, uid_raw = call.data.split(":")
+        uid = int(uid_raw)
+    except Exception:
+        bot.answer_callback_query(call.id, "Ошибка кнопки.", show_alert=True)
+        return
+
+    name = f"ID {uid}"
+
+    try:
+        if action == "warn":
+            warn_by_id(call.message.chat.id, uid, name, "кнопка админа")
+            bot.answer_callback_query(call.id, "Warn выдан.")
+        elif action == "mute":
+            mute_member(call.message.chat.id, uid)
+            bot.send_message(call.message.chat.id, f"🔇 <b>{name}</b> замьючен на {setting('mute_minutes')} минут.")
+            bot.answer_callback_query(call.id, "Mute готов.")
+        elif action == "unmute":
+            unmute_member(call.message.chat.id, uid)
+            bot.send_message(call.message.chat.id, f"🔊 <b>{name}</b> размьючен.")
+            bot.answer_callback_query(call.id, "Unmute готов.")
+        elif action == "ban":
+            bot.ban_chat_member(call.message.chat.id, uid)
+            bot.send_message(call.message.chat.id, f"⛔ <b>{name}</b> забанен.")
+            bot.answer_callback_query(call.id, "Ban готов.")
+        elif action == "kick":
+            bot.ban_chat_member(call.message.chat.id, uid)
+            bot.unban_chat_member(call.message.chat.id, uid)
+            bot.send_message(call.message.chat.id, f"👢 <b>{name}</b> кикнут.")
+            bot.answer_callback_query(call.id, "Kick готов.")
+        elif action == "clear":
+            data["warnings"][str(uid)] = 0
+            save_data(data)
+            bot.send_message(call.message.chat.id, f"🧹 Варны <b>{name}</b> очищены.")
+            bot.answer_callback_query(call.id, "Варны очищены.")
+    except Exception as e:
+        bot.answer_callback_query(call.id, "Ошибка.", show_alert=True)
+        bot.send_message(call.message.chat.id, f"❌ Не сработало: <code>{e}</code>")
 
 @bot.message_handler(content_types=["new_chat_members"])
 def new_members(message):
