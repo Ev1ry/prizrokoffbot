@@ -28,9 +28,8 @@ DEFAULT_DATA = {
     "blacklist_words": ["scam", "скам", "лохотрон", "фишинг", "обман"],
     "blocked_links": ["http://", "https://", "t.me/", "telegram.me/", "discord.gg/", "bit.ly/", "tinyurl.com", "vk.com/"],
     "custom_replies": {
-        "привет": "Йоу 👻",
         "правила": "Напиши /rules — там полный устав Prizrok чата.",
-        "данек": "Данек кодерочек на связи 🧠💻"
+        "данек": "Данек кодерочек"
     },
     "settings": {
         "max_warnings": 3,
